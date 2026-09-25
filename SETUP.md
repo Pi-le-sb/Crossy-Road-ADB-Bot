@@ -1,244 +1,117 @@
-# 🛠️ Vollständige Setup-Anleitung
+# 🛠️ C++ Setup-Anleitung
 
-Diese Anleitung führt dich Schritt für Schritt durch die Installation und Konfiguration.
+## Schritt-für-Schritt Installation
 
-## Schritt 1: Repository klonen
+### 1. System-Abhängigkeiten installieren
+
+#### Ubuntu/Debian
+
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake git adb libopencv-dev
+```
+
+#### macOS
+
+```bash
+# Homebrew installieren (falls nicht vorhanden)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Abhängigkeiten
+brew install cmake adb opencv
+```
+
+#### Windows
+
+1. **Visual Studio 2019+** mit "Desktop Development with C++" Workload installieren
+2. **CMake** von https://cmake.org/download/ herunterladen und installieren
+3. **ADB Platform Tools** von https://developer.android.com/studio/releases/platform-tools
+4. **OpenCV** von https://opencv.org/releases/ (oder vcpkg: `vcpkg install opencv`)
+
+### 2. Repository klonen
 
 ```bash
 git clone https://github.com/Pi-le-sb/Crossy-Road-ADB-Bot.git
 cd Crossy-Road-ADB-Bot
 ```
 
-## Schritt 2: Python installieren
+### 3. Bauen
 
-### Windows
-1. Python von https://python.org herunterladen
-2. Installer ausführen und "Add Python to PATH" aktivieren
-
-### macOS
-```bash
-brew install python3
-```
-
-### Linux (Ubuntu/Debian)
-```bash
-sudo apt update
-sudo apt install python3 python3-pip
-```
-
-## Schritt 3: ADB installieren
-
-### Windows
-1. [Platform Tools](https://developer.android.com/studio/releases/platform-tools) herunterladen
-2. ZIP entpacken (z.B. nach `C:\platform-tools`)
-3. PowerShell als Administrator öffnen:
-   ```powershell
-   setx PATH "%PATH%;C:\platform-tools"
-   ```
-4. Neues Terminal öffnen und `adb version` testen
-
-### macOS
-```bash
-brew install android-platform-tools
-```
-
-### Linux (Ubuntu/Debian)
-```bash
-sudo apt install android-tools-adb
-```
-
-## Schritt 4: Python-Abhängigkeiten installieren
+#### Linux/macOS
 
 ```bash
-pip install -r requirements.txt
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)  # oder: make -j$(sysctl -n hw.ncpu) auf macOS
 ```
 
-**Fehlerbehebung:**
+#### Windows (Developer Command Prompt)
 
-### "pip: command not found"
-- Python ist nicht im PATH. Installiere Python neu oder füge es manuell hinzu.
+```cmd
+mkdir build
+cd build
+cmake -G "Visual Studio 16 2019" ..
+cmake --build . --config Release
+```
 
-### "Permission denied" (Linux/macOS)
+### 4. Testen
+
 ```bash
-pip install --user -r requirements.txt
+# ADB-Test
+./build/crossy_bot --test-adb
+
+# Screenshot-Test
+./build/crossy_bot --test-screen
 ```
 
-## Schritt 5: Android-Gerät vorbereiten
+### 5. Konfigurieren
 
-### Entwickleroptionen aktivieren
+Bearbeite `config.ini` und passe den Spielbereich an:
 
-1. Einstellungen → "Über das Telefon"
-2. 7x auf "Build-Nummer" tippen
-3. Zurück zu Einstellungen → "Entwickleroptionen"
-
-### USB-Debugging aktivieren
-
-1. Entwickleroptionen öffnen
-2. "USB-Debugging" aktivieren
-3. Bestätigen
-
-### Gerät verbinden
-
-1. Per USB anschließen
-2. Auf dem Gerät "USB-Debugging zulassen" bestätigen
-3. Im Terminal testen:
-   ```bash
-   adb devices
-   ```
-   
-   Erwartete Ausgabe:
-   ```
-   List of devices attached
-   ABC123XYZ    device
-   ```
-
-### Fehlerbehebung
-
-#### "no devices/emulators found"
-- USB-Kabel prüfen (manche Kabel sind nur zum Laden)
-- USB-Debugging aktivieren
-- Gerät neu verbinden
-- Windows: ADB-Treiber installieren (Google USB Driver)
-
-#### "unauthorized"
-- Auf dem Gerät erscheint ein Popup "USB-Debugging zulassen?"
-- "Immer zulassen" + "OK" tippen
-
-#### Gerät wird nicht erkannt (Windows)
-1. Geräte-Manager öffnen
-2. Nach "Android" oder "ADB" suchen
-3. Rechtsklick → Treiber aktualisieren
-4. [Google USB Driver](https://developer.android.com/studio/run/win-usb) installieren
-
-## Schritt 6: Crossy Road installieren
-
-### Option A: Play Store
-1. Play Store auf dem Gerät öffnen
-2. "Crossy Road" suchen
-3. Installieren
-
-### Option B: APK
-1. APK von vertrauenswürdiger Quelle herunterladen
-2. Auf Gerät installieren ("Unbekannte Quellen" erlauben)
-
-## Schritt 7: Bot konfigurieren
-
-### Spielbereich anpassen
-
-1. Bot im Test-Modus starten:
-   ```bash
-   python main.py --test-screen
-   ```
-
+1. `--test-screen` ausführen
 2. `test_screenshot.png` öffnen
+3. Koordinaten messen
+4. Werte in `config.ini` eintragen
 
-3. Koordinaten des Spielbereichs messen:
-   - Öffne das Bild in Paint, GIMP oder einem anderen Editor
-   - Fahre mit der Maus in die obere linke Ecke des Spielbereichs
-   - Notiere die X,Y-Koordinaten
-   - Fahre in die untere rechte Ecke
-   - Berechne: Breite = X2 - X1, Höhe = Y2 - Y1
+### 6. Ausführen
 
-4. `config.py` bearbeiten:
-   ```python
-   GAME_AREA_X = 100      # Dein gemessener X-Wert
-   GAME_AREA_Y = 300      # Dein gemessener Y-Wert
-   GAME_AREA_WIDTH = 800  # Deine gemessene Breite
-   GAME_AREA_HEIGHT = 600 # Deine gemessene Höhe
-   ```
-
-### CV-Templates erstellen (optional, aber empfohlen)
-
-1. `test_screenshot.png` öffnen
-2. Spieler (Huhn) ausschneiden:
-   - Ca. 30x30 Pixel um das Huhn
-   - Speichern als `assets/templates/player.png`
-
-3. Wiederhole für andere Objekte (Autos, Bäume, Wasser)
-
-## Schritt 8: Bot testen
-
-### ADB-Test
 ```bash
-python main.py --test-adb
+./build/crossy_bot
 ```
 
-Erwartete Ausgabe:
-```
-🔌 Teste ADB-Verbindung...
-✓ Gerät verbunden: 1080x2340 Pixel
-```
+## Fehlerbehebung
 
-### Screenshot-Test
+### CMake findet OpenCV nicht
+
+**Linux:**
 ```bash
-python main.py --test-screen
+pkg-config --modversion opencv4
+# Sollte Version anzeigen
 ```
 
-Erwartete Ausgabe:
-```
-📸 Teste Bildschirmaufnahme...
-✓ Screenshot erfolgreich: (2340, 1080, 3)
-  Screenshot wurde unter 'test_screenshot.png' gespeichert
-```
-
-### Bot-Test
-
-1. Crossy Road auf dem Gerät öffnen
-2. Zum Hauptbildschirm navigieren (Spieler ist sichtbar)
-3. Bot starten:
-   ```bash
-   python main.py
-   ```
-
-4. Enter drücken zum Starten
-
-Der Bot sollte jetzt automatisch tippen und den Spieler bewegen!
-
-## Schritt 9: Optimierung
-
-### Bot ist zu langsam
-
-In `config.py`:
-```python
-DELAY_BETWEEN_MOVES = 0.2  # Von 0.3 auf 0.2 reduzieren
+**Windows (vcpkg):**
+```cmd
+vcpkg install opencv:x64-windows
+set CMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake ..
 ```
 
-### Bot macht schlechte Entscheidungen
+### Compiler-Fehler
 
-1. CV-Templates verbessern
-2. Template-Schwellenwert anpassen:
-   ```python
-   TEMPLATE_THRESHOLD = 0.8  # Höher = strengere Erkennung
-   ```
+- C++17 erforderlich: GCC 9+, Clang 10+, MSVC 2019+
+- `cmake .. -DCMAKE_BUILD_TYPE=Release` für Release-Build
 
-### Screenshot dauert zu lange
+### ADB funktioniert nicht
 
-- Verwende `scrcpy` für schnelleres Screen-Streaming
-- Oder reduziere die Screenshot-Qualität
+- USB-Debugging aktivieren
+- Gerät anschließen und "Immer zulassen" bestätigen
+- `adb devices` prüfen
 
-## Häufige Probleme
+## Performance-Tipps
 
-### Bot tippt an der falschen Stelle
+1. **Release-Build**: `cmake .. -DCMAKE_BUILD_TYPE=Release`
+2. **AVX2**: `-march=native` (Linux)
+3. **OpenCV mit TBB/IPP**: Schnellere CV-Operationen
 
-- `GAME_AREA_*` Werte in `config.py` überprüfen
-- Gerät hat andere Auflösung als erwartet
-
-### CV erkennt nichts
-
-- Templates sind falsch (falsche Größe, schlechte Qualität)
-- `TEMPLATE_THRESHOLD` zu hoch (auf 0.5 testen)
-- CV komplett deaktivieren zum Testen: `USE_CV = False`
-
-### ADB-Befehle funktionieren nicht
-
-- `adb kill-server` + `adb start-server`
-- USB-Kabel wechseln
-- Gerät neu starten
-
-## Nächste Schritte
-
-- Templates für bessere Erkennung erstellen
-- Eigene AI-Logik in `src/ai_agent.py` implementieren
-- YOLOv8-Modell trainieren für robustere Erkennung
-
-Viel Erfolg! 🎮🐔
+Viel Erfolg! 🎮
