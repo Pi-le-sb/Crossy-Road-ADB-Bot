@@ -1,207 +1,123 @@
 #!/usr/bin/env python3
-"""
-Crossy Road ADB Bot - Funktionierende Version
-Einfach, getestet, ohne Komplikationen
-"""
-
+import argparse
 import subprocess
+import sys
 import time
+
 import cv2
 import numpy as np
-import argparse
+
 import config
 
 
-def run_adb(command):
-    """ADB-Befehl ausführen"""
-    device_flag = f"-s {config.ADB_DEVICE_ID}" if config.ADB_DEVICE_ID else ""
-    full_cmd = f"adb {device_flag} {command}"
+def adb_cmd(*args):
+    cmd = ["adb"]
+    if config.ADB_DEVICE_ID:
+        cmd += ["-s", config.ADB_DEVICE_ID]
+    return cmd + list(args)
+
+
+def run(*args, timeout=10):
     try:
-        result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, timeout=5)
-        return result.stdout.strip(), result.stderr.strip()
-    except Exception as e:
-        return "", str(e)
+        return subprocess.run(adb_cmd(*args), capture_output=True, timeout=timeout)
+    except FileNotFoundError:
+        print("FEHLER: adb nicht gefunden. Platform-Tools in den PATH aufnehmen.")
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def check_adb():
-    """ADB-Verbindung prüfen"""
-    stdout, stderr = run_adb("devices")
-    if "device" in stdout and len([l for l in stdout.split("\n")[1:] if l.strip() and "device" in l]) > 0:
-        return True
-    return False
+    r = run("devices")
+    if r is None:
+        return False
+    lines = r.stdout.decode(errors="ignore").splitlines()[1:]
+    return any(l.strip().endswith("device") for l in lines)
 
 
 def get_screen_size():
-    """Bildschirmgröße ermitteln"""
-    stdout, _ = run_adb("shell wm size")
-    if "Physical size" in stdout:
-        size_str = stdout.split(":")[1].strip()
-        w, h = map(int, size_str.split("x"))
-        return w, h
-    return 1080, 1920
-
-
-def tap(x, y):
-    """Auf Bildschirm tippen"""
-    run_adb(f"shell input tap {int(x)} {int(y)}")
+    r = run("shell", "wm", "size")
+    if r is not None:
+        out = r.stdout.decode(errors="ignore")
+        if "size:" in out:
+            w, h = out.strip().splitlines()[-1].split(":")[1].strip().split("x")
+            return int(w), int(h)
+    return None
 
 
 def screenshot():
-    """Screenshot machen und als numpy array zurückgeben"""
-    run_adb("shell screencap -p /sdcard/crossy_bot.png")
-    run_adb("pull /sdcard/crossy_bot.png /tmp/crossy_bot.png")
-    img = cv2.imread("/tmp/crossy_bot.png")
-    return img
+    r = run("exec-out", "screencap", "-p", timeout=15)
+    if r is None or r.returncode != 0 or not r.stdout:
+        return None
+    return cv2.imdecode(np.frombuffer(r.stdout, np.uint8), cv2.IMREAD_COLOR)
+
+
+def tap(x, y):
+    run("shell", "input", "tap", str(int(x)), str(int(y)))
+
+
+def swipe(x1, y1, x2, y2, ms=60):
+    run("shell", "input", "swipe", str(int(x1)), str(int(y1)), str(int(x2)), str(int(y2)), str(ms))
 
 
 def test_adb():
-    """ADB-Test"""
-    print("🔌 Teste ADB...")
     if not check_adb():
-        print("❌ Kein Gerät gefunden!")
-        print("\nTipps:")
-        print("  1. USB-Debugging aktivieren")
-        print("  2. Gerät anschließen")
-        print("  3. 'adb devices' prüfen")
+        print("Kein Geraet gefunden. USB-Debugging an? 'adb devices' pruefen.")
         return False
-    
-    w, h = get_screen_size()
-    print(f"✓ Gerät verbunden: {w}x{h} Pixel")
+    print("Geraet verbunden, Bildschirm:", get_screen_size())
     return True
 
 
 def test_screen():
-    """Screenshot-Test"""
-    print("📸 Teste Screenshot...")
-    
     if not check_adb():
-        print("❌ Kein Gerät!")
+        print("Kein Geraet gefunden.")
         return False
-    
     img = screenshot()
-    if img is not None:
-        cv2.imwrite("test_screenshot.png", img)
-        print(f"✓ Screenshot: {img.shape}")
-        print("  Gespeichert als test_screenshot.png")
-        print(f"\nSpielbereich: X={config.GAME_AREA_X}, Y={config.GAME_AREA_Y}")
-        print(f"              W={config.GAME_AREA_WIDTH}, H={config.GAME_AREA_HEIGHT}")
-        return True
-    else:
-        print("❌ Screenshot fehlgeschlagen!")
+    if img is None:
+        print("Screenshot fehlgeschlagen.")
         return False
-
-
-def detect_player(screenshot):
-    """Spieler-Position erkennen (einfache Farberkennung)"""
-    if screenshot is None:
-        return None, None
-    
-    # ROI für Spielbereich
-    roi = screenshot[config.GAME_AREA_Y:config.GAME_AREA_Y+config.GAME_AREA_HEIGHT,
-                    config.GAME_AREA_X:config.GAME_AREA_X+config.GAME_AREA_WIDTH]
-    
-    if roi is None or roi.size == 0:
-        return None, None
-    
-    # HSV konvertieren
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    
-    # Weiß/gelb für Spieler (Huhn)
-    lower = np.array([0, 0, 200])
-    upper = np.array([20, 50, 255])
-    mask = cv2.inRange(hsv, lower, upper)
-    
-    # Konturen
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if not contours:
-        return None, None
-    
-    # Größte Kontur
-    largest = max(contours, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(largest)
-    
-    if w < 20 or h < 20:
-        return None, None
-    
-    # Grid-Position (10x10 Grid angenommen)
-    grid_x = int((x + w//2) / (config.GAME_AREA_WIDTH / 10))
-    grid_y = int((y + h//2) / (config.GAME_AREA_HEIGHT / 10))
-    
-    return grid_x, grid_y
-
-
-def decide_move(player_x, player_y):
-    """Einfache AI-Entscheidung"""
-    # Vorwärts ist gut!
-    return "up"
+    h, w = img.shape[:2]
+    cv2.imwrite("test_screenshot.png", img)
+    x, y = config.GAME_AREA_X, config.GAME_AREA_Y
+    cv2.rectangle(img, (x, y), (x + config.GAME_AREA_WIDTH, y + config.GAME_AREA_HEIGHT), (0, 255, 0), 4)
+    cv2.imwrite("test_screenshot_area.png", img)
+    print(f"OK: Screenshot {w}x{h} gespeichert.")
+    print("test_screenshot.png = Original, test_screenshot_area.png = mit Spielbereich (gruen).")
+    return True
 
 
 def play():
-    """Hauptspielschleife"""
-    print("\n🐔 Starte Crossy Road Bot...")
-    print(f"  Spielbereich: {config.GAME_AREA_X},{config.GAME_AREA_Y} +{config.GAME_AREA_WIDTH}x{config.GAME_AREA_HEIGHT}")
-    
-    if not check_adb():
-        print("❌ Kein Gerät!")
+    if not test_adb():
         return
-    
-    print("\n⚠️  Crossy Road muss geöffnet sein!")
-    input("Drücke Enter zum Starten...")
-    
-    score = 0
-    moves = 0
-    
+    size = get_screen_size()
+    if size:
+        cx, cy = size[0] // 2, size[1] // 2
+    else:
+        cx = config.GAME_AREA_X + config.GAME_AREA_WIDTH // 2
+        cy = config.GAME_AREA_Y + config.GAME_AREA_HEIGHT // 2
+    input("Crossy Road oeffnen, Spiel starten, dann Enter. Abbruch mit Strg+C.")
+    n = 0
     try:
         while True:
-            # Screenshot
-            img = screenshot()
-            if img is None:
-                print("⚠️  Screenshot-Fehler!")
-                time.sleep(1)
-                continue
-            
-            # Spieler erkennen
-            px, py = detect_player(img)
-            if px is not None:
-                print(f"  Spieler: {px},{py}")
-            
-            # Bewegung
-            move = decide_move(px, py)
-            
-            # Tap-Position
-            cx = config.GAME_AREA_X + config.GAME_AREA_WIDTH // 2
-            cy = config.GAME_AREA_Y + config.GAME_AREA_HEIGHT // 2
-            offset = min(config.GAME_AREA_WIDTH, config.GAME_AREA_HEIGHT) // 6
-            
-            if move == "up":
-                tap(cx, cy - offset)
-                score += 1
-                print(f"  ↑ UP (Score: {score})")
-            
-            moves += 1
+            tap(cx, cy)
+            n += 1
+            print(f"Schritt {n}")
             time.sleep(config.DELAY_BETWEEN_MOVES)
-            
-            if moves % 20 == 0:
-                print(f"\n📊 Status: Score={score}, Züge={moves}\n")
-                
     except KeyboardInterrupt:
-        print(f"\n\n🛑 Gestoppt! Score: {score}, Züge: {moves}")
+        print(f"Gestoppt nach {n} Schritten.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Crossy Road ADB Bot")
-    parser.add_argument("--test-adb", action="store_true", help="ADB-Test")
-    parser.add_argument("--test-screen", action="store_true", help="Screenshot-Test")
-    parser.add_argument("--device", "-d", help="ADB Device ID")
-    args = parser.parse_args()
-    
-    if args.device:
-        config.ADB_DEVICE_ID = args.device
-    
-    if args.test_adb:
+    p = argparse.ArgumentParser()
+    p.add_argument("--test-adb", action="store_true")
+    p.add_argument("--test-screen", action="store_true")
+    p.add_argument("--device", "-d")
+    a = p.parse_args()
+    if a.device:
+        config.ADB_DEVICE_ID = a.device
+    if a.test_adb:
         test_adb()
-    elif args.test_screen:
+    elif a.test_screen:
         test_screen()
     else:
         play()
