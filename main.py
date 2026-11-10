@@ -46,6 +46,7 @@ def get_screen_size():
 
 
 def screenshot():
+    # Kein Datei-Speichern auf dem Geraet: Bild kommt direkt in den Speicher.
     r = run("exec-out", "screencap", "-p", timeout=15)
     if r is None or r.returncode != 0 or not r.stdout:
         return None
@@ -60,17 +61,25 @@ def swipe(x1, y1, x2, y2, ms=60):
     run("shell", "input", "swipe", str(int(x1)), str(int(y1)), str(int(x2)), str(int(y2)), str(ms))
 
 
+def cleanup_device():
+    # Alte Dateien von frueheren Versionen entfernen.
+    run("shell", "rm", "-f", "/sdcard/crossy_bot_temp.png")
+    run("shell", "rm", "-f", "/sdcard/crossy_bot.png")
+    run("shell", "rm", "-f", "/sdcard/crossy_bot_screenshot.png")
+
+
 def test_adb():
     if not check_adb():
         print("Kein Geraet gefunden. USB-Debugging an? 'adb devices' pruefen.")
         return False
+    cleanup_device()
     print("Geraet verbunden, Bildschirm:", get_screen_size())
+    print("Alte Bot-Dateien auf dem Geraet entfernt.")
     return True
 
 
 def test_screen():
-    if not check_adb():
-        print("Kein Geraet gefunden.")
+    if not test_adb():
         return False
     img = screenshot()
     if img is None:
