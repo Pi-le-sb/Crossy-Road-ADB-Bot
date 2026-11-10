@@ -31,3 +31,14 @@ screenshots/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local training data, screenshots and checkpoints (never upload)
+training-data/
+.venv-training/
+/runs/
+screenshot_*.jpg
+screenshot_*.png
+test_screenshot*.jpg
+test_screenshot*.png
+*.pt
+*.onnx
