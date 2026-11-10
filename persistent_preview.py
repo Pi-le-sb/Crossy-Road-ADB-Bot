@@ -1,4 +1,4 @@
-"""Persistent read-only player/game-over preview with automatic camera candidates."""
+"""Persistent read-only player/game-over preview with tentative motion group IDs."""
 import argparse
 from pathlib import Path
 import time
@@ -8,6 +8,7 @@ from calibration import capture
 from combined_preview import select,match,draw,classify
 from motion_preview import track,camera_shift,relative_velocity
 from profile_store import save_profile,load_profile
+from candidate_tracking import MotionTracker
 
 
 def small(image):
@@ -58,7 +59,7 @@ def motion(previous,current,dt,player_box):
     old,new = track(gray0,gray1,field,500)
     velocity = relative_velocity(old,new,camera,dt)
     moving = (np.linalg.norm(velocity,axis=1)>=12) & (np.linalg.norm(new-old-camera,axis=1)>=2.5)
-    return new[moving],velocity[moving]
+    return new[moving],velocity[moving],camera
 
 
 def main():
@@ -82,8 +83,9 @@ def main():
     last_time = None
     hits = 0
     last_state = None
+    tracker = MotionTracker()
     name = 'Persistent read-only preview; Q exits'
-    print('No taps. No new files per round. No manual scenery selection. Not an autonomous bot.')
+    print('Read-only motion groups, NOT vehicles or collision bounds. Saved calibration is reused.')
     while True:
         started = time.monotonic()
         original = capture(args.device)
@@ -102,16 +104,27 @@ def main():
         if state == 'PLAYER_VISIBLE':
             draw(view,pl,player,(255,255,0))
             if previous is not None:
-                candidates = motion(previous,image,stamp-last_time,previous_box)
+                dt = stamp-last_time
+                candidates = motion(previous,image,dt,previous_box)
                 if candidates is not None:
-                    points,vectors = candidates
-                    movement = f'MOTION_CANDIDATES {len(points)} (not vehicles)'
-                    for point,vector in zip(points,vectors):
-                        cv2.arrowedLine(view,tuple(point.astype(int)),tuple((point+vector*.25).astype(int)),(0,180,255),1,tipLength=.25)
+                    points,vectors,camera = candidates
+                    groups = tracker.update(points,vectors,camera,dt)
+                    movement = f'GROUPS {len(groups)} | features {len(points)}'
+                    for item in groups:
+                        g = item.group
+                        color = (0,180,255) if item.hits>=2 else (160,160,160)
+                        bx,by,ex,ey = g.bounds
+                        cv2.rectangle(view,(bx,by),(ex,ey),color,2)
+                        label = f'G{item.id} {"TRACK" if item.hits>=2 else "NEW"} {g.velocity[0]:+.0f},{g.velocity[1]:+.0f}px/s'
+                        cv2.putText(view,label,(max(0,bx),max(80,by-4)),0,.32,color,1)
+                        cv2.arrowedLine(view,tuple(g.center.astype(int)),tuple((g.center+g.velocity*.25).astype(int)),color,2,tipLength=.25)
+                else:
+                    tracker.reset()
             previous = image
             previous_box = (*pl,player.shape[1],player.shape[0])
             last_time = stamp
         else:
+            tracker.reset()
             previous = None
             previous_box = None
             last_time = None
