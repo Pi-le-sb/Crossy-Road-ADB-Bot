@@ -1,0 +1,5 @@
+# Optional data preparation/download/local-training tools.
+PyYAML>=6,<7
+Pillow>=10,<13
+roboflow>=1.1,<2
+ultralytics>=8.3,<9
