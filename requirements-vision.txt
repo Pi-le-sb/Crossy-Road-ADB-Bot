@@ -1,0 +1,3 @@
+# Optional only; existing previews do not require this.
+ultralytics>=8.3,<9
+# ONNX models may require an appropriate onnxruntime installation separately.
