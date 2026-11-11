@@ -1,32 +1,43 @@
-# Player exclusion in the two-model preview
+# Player selection and missing-class diagnostics
 
-The existing saved player template is matched on the SAME frame as both YOLO predictions.
-State detection now runs BEFORE obstacle rendering. No training, new calibration, file
-uploads, screenshot saves or input events are introduced.
+This revision replaces the previous strict 0.90/85%-containment filter. It does not prove
+that the user's unresolved live failure has been reproduced or fixed.
 
-By default, only in PLAYER_VISIBLE state and template similarity >=0.90, a static obstacle
-is removed if at least 85% of its rectangle lies inside the player template rectangle,
-its center is inside that rectangle and its area is 0.35-1.6 times the player rectangle.
-The player rectangle is converted from preview coordinates to original frame coordinates.
-Only obstacle-group entries are removed: original-model objects/vehicles are never filtered.
-Large overlapping trees and adjacent obstacles are deliberately retained by these rules.
+Player evidence, on the same frame:
+- One original-model prediction named player/chicken/duck/character, confidence >=0.65,
+  is preferred. Model-local class IDs are never assumed to mean player.
+- Otherwise the saved template can supply the position at similarity >=0.70. The same
+  configurable threshold is used for visible-state classification and template exclusion.
+- Multiple original-model player candidates need template fallback; non-overlapping strong
+  model/template positions cause PLAYER_SOURCES_DISAGREE and no exclusion.
+- A detected restart button blocks both sources, including before GAME_OVER confirmation.
 
-This is a conservative heuristic, NOT proof of player identity. Template similarity is
-not a calibrated probability. A nearby real obstacle can still be hidden if its geometry
-satisfies these rules and the player template matches incorrectly. Visual checking is
-required. No profile, low similarity, UNKNOWN or GAME_OVER means no player exclusion.
-Do not use this preview as collision/path-planning ground truth.
+Only obstacle-group boxes are removed, never original-model objects. A candidate must have
+its center inside the selected player box, IoU >=0.45 and area 0.35-2.2 times the player box.
+This accepts moderately larger player detections that failed the former containment rule.
+These are heuristics: real nearby obstacles can be hidden if mistaken player evidence and
+geometry meet the rules. Template similarity and YOLO confidence are not averaged or treated
+as equivalent probabilities. No tracking or verified identity is claimed. Check visually;
+--no-player-filter remains available for comparison.
 
-Run your existing dual_model_preview.py command unchanged. The second status line reports
-player-score, excluded count and filter status. --no-player-filter disables exclusion for
-comparison. --player-filter-score changes the minimum template similarity (default 0.90).
-No fixed screen-center mask and no whole-player-neighborhood masking is used.
+Use the existing dual-model launch command unchanged. --player-filter-score now defaults to
+0.70 (template), --player-model-score defaults to 0.65 (original-model class prediction).
+The display shows player source, both scores, excluded count and a reason. Every two seconds
+the console reports the same diagnostics plus observed original-model class counts.
+NO_PLAYER_LOCATION, AMBIGUOUS_PRIMARY, PLAYER_SOURCES_DISAGREE and NO_MATCHING_OBSTACLE_BOX
+explain why the filter leaves a frame unchanged instead of hiding every central object.
+
+Startup prints checkpoint paths, all declared classes and a small known-alias inventory for
+player/train/log/turtle/coin/road/water/rail. Inventory means declared name availability ONLY;
+false may also mean an unrecognized alias. All raw names are printed for that reason. No new
+classes are trained, no third model is downloaded, and no terrain/path planning is added.
+Other original-model predictions remain unfiltered; tree/rock still come from the specialist.
 
 ```cmd
 .venv-training\Scripts\python.exe -m unittest -v test_dual_model_fusion test_player_obstacle_filter
 ```
 
-New tests cover synthetic geometry, original-object preservation, low/missing/invalid player
-matches, game-over behavior, coordinate scaling and filter-before-render ordering. They do
-not validate real template matching, actual models, ADB, GUI, latency or real-scene accuracy.
-Both model files and the original single-model preview remain unchanged.
+Tests use synthetic detections and source-code checks, not actual checkpoints, saved templates,
+ADB, GUI, live accuracy or performance. The runtime uncertainty requires live checking.
+No calibration dialogs, input events, screenshot saves, label changes or weight changes.
+Only source/test/documentation files belong in Git; user images and weights stay local.
